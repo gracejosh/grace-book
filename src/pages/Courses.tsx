@@ -56,7 +56,8 @@ export default function Courses() {
     };
 
     fetchCourses();
-  }, [showToast]);
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Fetch user's course progress
   useEffect(() => {

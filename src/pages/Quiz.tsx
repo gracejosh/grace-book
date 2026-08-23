@@ -33,13 +33,25 @@ export default function Quiz() {
 
   const startQuiz = async (category: string) => {
     setLoading(true);
-    const { data, error } = await supabase.from('quizzes').select('*').eq('category', category).order('random()').limit(10);
-    if (error || !data || data.length === 0) {
+    // PostgREST cannot order by random(); fetch a pool and shuffle client-side.
+    const { data, error } = await supabase
+      .from('quizzes')
+      .select('*')
+      .eq('category', category)
+      .limit(50);
+    if (error) {
+      console.error('Error fetching quizzes:', error);
+      showToast('Could not load questions: ' + error.message, 'error');
+      setLoading(false);
+      return;
+    }
+    if (!data || data.length === 0) {
       showToast('No questions available for this category yet', 'error');
       setLoading(false);
       return;
     }
-    setQuestions(data as QuizType[]);
+    const shuffled = [...(data as QuizType[])].sort(() => Math.random() - 0.5).slice(0, 10);
+    setQuestions(shuffled);
     setSelectedCategory(category);
     setCurrentQ(0);
     setScore(0);
@@ -74,6 +86,39 @@ export default function Quiz() {
     }
   }, [answered, questions, currentQ, streak]);
 
+  const loadLeaderboard = useCallback(async () => {
+    const { data, error } = await supabase
+      .from('quiz_results')
+      .select('score, total_questions, category, time_taken, created_at, user_id')
+      .order('score', { ascending: false })
+      .limit(10);
+    if (error) {
+      console.error('Error loading leaderboard:', error);
+      setResults([]);
+      return;
+    }
+    setResults((data as QuizResult[]) ?? []);
+  }, []);
+
+  const finishQuiz = useCallback(async () => {
+    const timeTaken = Math.floor((Date.now() - startTime) / 1000);
+    if (user) {
+      const { error } = await supabase.from('quiz_results').insert({
+        user_id: user.id,
+        score,
+        total_questions: questions.length,
+        category: selectedCategory,
+        time_taken: timeTaken,
+      });
+      if (error) {
+        console.error('Error saving quiz result:', error);
+        showToast('Could not save your score', 'error');
+      }
+    }
+    setPhase('results');
+    loadLeaderboard();
+  }, [user, score, questions.length, selectedCategory, startTime, showToast, loadLeaderboard]);
+
   const nextQuestion = useCallback(() => {
     if (currentQ + 1 >= questions.length) {
       finishQuiz();
@@ -83,31 +128,7 @@ export default function Quiz() {
       setAnswered(false);
       setTimeLeft(QUESTION_TIME);
     }
-  }, [currentQ, questions.length, finishQuiz]); // Added finishQuiz to dependencies
-
-  const finishQuiz = useCallback(async () => {
-    const timeTaken = Math.floor((Date.now() - startTime) / 1000);
-    if (user) {
-      await supabase.from('quiz_results').insert({
-        user_id: user.id,
-        score,
-        total_questions: questions.length,
-        category: selectedCategory,
-        time_taken: timeTaken,
-      });
-    }
-    setPhase('results');
-    loadLeaderboard();
-  }, [user, score, questions.length, selectedCategory, startTime, loadLeaderboard]); // Added loadLeaderboard to dependencies
-
-  const loadLeaderboard = useCallback(async () => {
-    const { data } = await supabase
-      .from('quiz_results')
-      .select('score, total_questions, category, time_taken, created_at, user_id')
-      .order('score', { ascending: false })
-      .limit(10);
-    setResults((data as QuizResult[]) ?? []);
-  }, []);
+  }, [currentQ, questions.length, finishQuiz]);
 
   // Timer
   useEffect(() => {

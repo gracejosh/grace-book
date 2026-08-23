@@ -62,7 +62,8 @@ export default function Books() {
     };
 
     fetchBooks();
-  }, [showToast]);
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Fetch user's downloaded books
   useEffect(() => {

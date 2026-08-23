@@ -31,6 +31,7 @@ export default function Chat() {
   const [profiles, setProfiles] = useState<Record<string, Profile>>({});
   const [showMobileChat, setShowMobileChat] = useState(false);
   const [sendingMessage, setSendingMessage] = useState(false);
+  const profilesRef = useRef<Record<string, Profile>>({});
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -71,11 +72,12 @@ export default function Chat() {
     };
 
     fetchRooms();
-  }, [showToast]);
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Load profiles for message senders
   const loadProfiles = useCallback(async (ids: string[]) => {
-    const uniqueIds = [...new Set(ids)].filter((id) => id && !profiles[id]);
+    const uniqueIds = [...new Set(ids)].filter((id) => id && !profilesRef.current[id]);
     if (uniqueIds.length === 0) return;
     
     try {
@@ -95,16 +97,17 @@ export default function Chat() {
         console.log('✅ Profiles fetched:', data.length, 'profiles');
         setProfiles((prev) => {
           const next = { ...prev };
-          data.forEach((p: Profile) => { 
-            next[p.id] = p; 
+          (data as Profile[]).forEach((p) => {
+            next[p.id] = p;
           });
+          profilesRef.current = next;
           return next;
         });
       }
     } catch (err) {
       console.error('💥 Error loading profiles:', err);
     }
-  }, [profiles]);
+  }, []);
 
   // Load messages for selected room
   useEffect(() => {
@@ -191,7 +194,8 @@ export default function Chat() {
       console.log('🔌 Removing subscription for room:', selectedRoom.id);
       supabase.removeChannel(channel); 
     };
-  }, [selectedRoom, loadProfiles, showToast]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedRoom?.id]);
 
   // Auto-scroll
   useEffect(() => {

@@ -77,17 +77,29 @@ export default function Home() {
 
   useEffect(() => {
     (async () => {
+      const countRows = async (table: string) => {
+        const { count, error } = await supabase
+          .from(table)
+          .select('*', { count: 'exact', head: true });
+        if (error) {
+          console.error(`Error counting ${table}:`, error);
+          return 0;
+        }
+        return count ?? 0;
+      };
+
       const [users, books, courses, quizzes] = await Promise.all([
-        supabase.from('profiles').select('id', { count: 'exact', head: true }),
-        supabase.from('books').select('id', { count: 'exact', head: true }),
-        supabase.from('courses').select('id', { count: 'exact', head: true }),
-        supabase.from('quiz_results').select('id', { count: 'exact', head: true }),
+        countRows('profiles'),
+        countRows('books'),
+        countRows('courses'),
+        countRows('quiz_results'),
       ]);
+
       setStats({
-        users: (users.count ?? 0) + 1248,
-        books: books.count ?? 0,
-        courses: courses.count ?? 0,
-        quizzes: (quizzes.count ?? 0) + 342,
+        users: users + 1248,
+        books,
+        courses,
+        quizzes: quizzes + 342,
       });
     })();
   }, []);
@@ -209,7 +221,7 @@ export default function Home() {
               return (
                 <motion.div key={card.to} initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: i * 0.08 }}>
                   <Link to={card.to} className="group block glass-card p-6 h-full hover:shadow-2xl transition-all duration-300 hover:-translate-y-1">
-                    <div className={`inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-br ${card.gradient} mb-4 shadow-lg group-hover:scale-110 transition-transform duration-300">
+                    <div className={`inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-br ${card.gradient} mb-4 shadow-lg group-hover:scale-110 transition-transform duration-300`}>
                       <Icon className="h-7 w-7 text-white" />
                     </div>
                     <h3 className="text-xl font-bold mb-2 group-hover:text-primary-600 dark:group-hover:text-primary-400 transition-colors">{t(card.titleKey)}</h3>
