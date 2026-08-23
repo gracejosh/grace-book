@@ -1,8 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = 'https://oeshszodnfjlrntqzffb.supabase.co';
-const supabaseAnonKey =
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9lc2hzem9kbmZqbHJudHF6ZmZiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODcwNjA2MzksImV4cCI6MjEwMjYzNjYzOX0.B2QfJa0hXrX4JUfkfRDFFk2v_aBa_7ygPtB2TFl1Gv4';
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
@@ -12,9 +11,9 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   },
 });
 
-export const CLOUDINARY_CLOUD_NAME = 'grace.book';
-export const CLOUDINARY_UPLOAD_PRESET = 'grace_preset';
-export const CLOUDINARY_API_KEY = '8IfOPMrV8w6Mh85iQLMQy_qUryU';
+export const CLOUDINARY_CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME as string;
+export const CLOUDINARY_UPLOAD_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET as string;
+export const CLOUDINARY_API_KEY = import.meta.env.VITE_CLOUDINARY_API_KEY as string;
 
 export async function uploadToCloudinary(file: File, resourceType: 'image' | 'raw' | 'video' = 'image'): Promise<string> {
   const url = `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/${resourceType}/upload`;
