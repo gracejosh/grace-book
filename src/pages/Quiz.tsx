@@ -4,7 +4,7 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import type { Quiz as QuizType, QuizResult } from '@/types';
-import { BrainCircuit, Clock, Flame, Trophy, CheckCircle, XCircle, RotateCcw, Award, Share2, ChevronRight, Star, BookOpen, Globe, Atom, Scroll, Map } from 'lucide-react';
+import { BrainCircuit, Clock, Flame, Trophy, CheckCircle, XCircle, RotateCcw, Award, Share2, ChevronRight, Star, BookOpen, Globe, Atom, Scroll, Map, AlertCircle } from 'lucide-react';
 import { SkeletonCard, EmptyState } from '@/components/ui';
 
 const categories = ['Bible', 'General Knowledge', 'Science', 'History', 'Geography'];
@@ -19,6 +19,7 @@ export default function Quiz() {
   const [phase, setPhase] = useState<Phase>('select');
   const [questions, setQuestions] = useState<QuizType[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [selectedCategory, setSelectedCategory] = useState('Bible');
   const [currentQ, setCurrentQ] = useState(0);
   const [score, setScore] = useState(0);
@@ -33,28 +34,74 @@ export default function Quiz() {
 
   const startQuiz = async (category: string) => {
     setLoading(true);
-    const { data, error } = await supabase.from('quizzes').select('*').eq('category', category).order('random()').limit(10);
-    if (error || !data || data.length === 0) {
-      showToast('No questions available for this category yet', 'error');
+    setError(null);
+    
+    try {
+      console.log('🧠 Starting quiz for category:', category);
+      
+      const { data, error } = await supabase
+        .from('quizzes')
+        .select('*')
+        .eq('category', category)
+        .limit(10);
+
+      if (error) {
+        console.error('❌ Error fetching quiz questions:', error);
+        setError(error.message);
+        showToast('Could not load quiz questions: ' + error.message, 'error');
+        setLoading(false);
+        return;
+      }
+
+      if (!data || data.length === 0) {
+        console.warn('⚠️ No questions available for category:', category);
+        showToast('No questions available for this category yet', 'info');
+        setLoading(false);
+        return;
+      }
+
+      console.log('✅ Quiz questions fetched:', data.length, 'questions');
+      console.log('📊 First question sample:', data[0]);
+      
+      // Parse options if they're stored as JSONB
+      const parsedData = data.map((q: any) => {
+        let options = q.options;
+        if (typeof options === 'string') {
+          try {
+            options = JSON.parse(options);
+          } catch (err) {
+            console.error('💥 Failed to parse options for question:', q.id, err);
+            options = [];
+          }
+        }
+        return { ...q, options };
+      });
+
+      setQuestions(parsedData as QuizType[]);
+      setSelectedCategory(category);
+      setCurrentQ(0);
+      setScore(0);
+      setStreak(0);
+      setMaxStreak(0);
+      setSelectedAnswer(null);
+      setAnswered(false);
+      setTimeLeft(QUESTION_TIME);
+      setStartTime(Date.now());
+      setPhase('playing');
+    } catch (err) {
+      console.error('💥 Unexpected error starting quiz:', err);
+      setError(err instanceof Error ? err.message : 'Unknown error occurred');
+      showToast('Unexpected error starting quiz', 'error');
+    } finally {
       setLoading(false);
-      return;
     }
-    setQuestions(data as QuizType[]);
-    setSelectedCategory(category);
-    setCurrentQ(0);
-    setScore(0);
-    setStreak(0);
-    setMaxStreak(0);
-    setSelectedAnswer(null);
-    setAnswered(false);
-    setTimeLeft(QUESTION_TIME);
-    setStartTime(Date.now());
-    setPhase('playing');
-    setLoading(false);
   };
 
   const handleAnswer = useCallback((idx: number) => {
-    if (answered) return;
+    if (answered || !questions[currentQ]) return;
+    
+    console.log('🎯 Answer selected:', idx, 'Correct answer:', questions[currentQ].correct_answer);
+    
     setSelectedAnswer(idx);
     setAnswered(true);
     if (timerRef.current) clearInterval(timerRef.current);
@@ -63,6 +110,7 @@ export default function Quiz() {
     if (correct) {
       const points = difficultyPoints[questions[currentQ].difficulty] ?? 10;
       const streakBonus = Math.floor(streak * 2);
+      console.log('✅ Correct! Points:', points, 'Streak bonus:', streakBonus);
       setScore((prev) => prev + points + streakBonus);
       setStreak((prev) => {
         const newStreak = prev + 1;
@@ -70,6 +118,7 @@ export default function Quiz() {
         return newStreak;
       });
     } else {
+      console.log('❌ Wrong answer');
       setStreak(0);
     }
   }, [answered, questions, currentQ, streak]);
@@ -87,31 +136,57 @@ export default function Quiz() {
 
   const finishQuiz = useCallback(async () => {
     const timeTaken = Math.floor((Date.now() - startTime) / 1000);
+    console.log('🏁 Quiz finished! Score:', score, 'Time:', timeTaken);
+    
     if (user) {
-      await supabase.from('quiz_results').insert({
-        user_id: user.id,
-        score,
-        total_questions: questions.length,
-        category: selectedCategory,
-        time_taken: timeTaken,
-      });
+      try {
+        const { error } = await supabase.from('quiz_results').insert({
+          user_id: user.id,
+          score,
+          total_questions: questions.length,
+          category: selectedCategory,
+          time_taken: timeTaken,
+        });
+        
+        if (error) {
+          console.error('❌ Error saving quiz result:', error);
+        } else {
+          console.log('✅ Quiz result saved successfully');
+        }
+      } catch (err) {
+        console.error('💥 Error saving quiz result:', err);
+      }
     }
+    
     setPhase('results');
     loadLeaderboard();
   }, [user, score, questions.length, selectedCategory, startTime]);
 
   const loadLeaderboard = useCallback(async () => {
-    const { data } = await supabase
-      .from('quiz_results')
-      .select('score, total_questions, category, time_taken, created_at, user_id')
-      .order('score', { ascending: false })
-      .limit(10);
-    setResults((data as QuizResult[]) ?? []);
+    try {
+      console.log('🏆 Loading leaderboard...');
+      const { data, error } = await supabase
+        .from('quiz_results')
+        .select('score, total_questions, category, time_taken, created_at, user_id')
+        .order('score', { ascending: false })
+        .limit(10);
+        
+      if (error) {
+        console.error('❌ Error loading leaderboard:', error);
+        return;
+      }
+      
+      console.log('✅ Leaderboard loaded:', data?.length, 'entries');
+      setResults((data as QuizResult[]) ?? []);
+    } catch (err) {
+      console.error('💥 Error loading leaderboard:', err);
+    }
   }, []);
 
   // Timer
   useEffect(() => {
     if (phase !== 'playing' || answered) return;
+    
     timerRef.current = setInterval(() => {
       setTimeLeft((prev) => {
         if (prev <= 1) {
@@ -123,7 +198,10 @@ export default function Quiz() {
         return prev - 1;
       });
     }, 1000);
-    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+    
+    return () => { 
+      if (timerRef.current) clearInterval(timerRef.current); 
+    };
   }, [phase, answered, currentQ]);
 
   // Auto-advance after answering
@@ -138,7 +216,7 @@ export default function Quiz() {
   const timePct = (timeLeft / QUESTION_TIME) * 100;
 
   if (phase === 'select') {
-    return <CategorySelect categories={categories} onSelect={startQuiz} loading={loading} />;
+    return <CategorySelect categories={categories} onSelect={startQuiz} loading={loading} error={error} />;
   }
 
   if (phase === 'results') {
@@ -156,8 +234,24 @@ export default function Quiz() {
     );
   }
 
-  // Playing
+  // Playing phase
+  if (!questions[currentQ]) {
+    console.error('💥 No question found at index:', currentQ);
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
+          <p className="text-lg font-semibold mb-4">Question not found</p>
+          <button onClick={() => setPhase('select')} className="btn-primary">
+            Back to Categories
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   const q = questions[currentQ];
+  
   return (
     <div className="min-h-screen pt-8 pb-20">
       <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -181,7 +275,11 @@ export default function Quiz() {
 
         {/* Progress bar */}
         <div className="h-2 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden mb-6">
-          <motion.div className="h-full bg-gradient-to-r from-primary-500 to-gold-500" animate={{ width: `${progressPct}%` }} transition={{ duration: 0.3 }} />
+          <motion.div 
+            className="h-full bg-gradient-to-r from-primary-500 to-gold-500" 
+            animate={{ width: `${progressPct}%` }} 
+            transition={{ duration: 0.3 }} 
+          />
         </div>
 
         {/* Timer */}
@@ -194,7 +292,9 @@ export default function Quiz() {
               transition={{ duration: 0.5, ease: 'linear' }}
             />
           </div>
-          <span className={`font-bold text-lg w-8 text-center ${timeLeft <= 5 ? 'text-red-500' : 'text-slate-600 dark:text-slate-300'}`}>{timeLeft}</span>
+          <span className={`font-bold text-lg w-8 text-center ${timeLeft <= 5 ? 'text-red-500' : 'text-slate-600 dark:text-slate-300'}`}>
+            {timeLeft}
+          </span>
         </div>
 
         {/* Question card */}
@@ -207,12 +307,16 @@ export default function Quiz() {
             className="glass-card p-6 sm:p-8 mb-6"
           >
             <div className="flex items-center gap-2 mb-4">
-              <span className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300">{q.category}</span>
-              <span className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-gold-100 dark:bg-gold-900/30 text-gold-700 dark:text-gold-300">{q.difficulty} · {difficultyPoints[q.difficulty] ?? 10}pts</span>
+              <span className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300">
+                {q.category}
+              </span>
+              <span className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-gold-100 dark:bg-gold-900/30 text-gold-700 dark:text-gold-300">
+                {q.difficulty || 'Easy'} · {difficultyPoints[q.difficulty] ?? 10}pts
+              </span>
             </div>
             <h2 className="text-xl sm:text-2xl font-bold mb-6">{q.question}</h2>
             <div className="grid gap-3">
-              {q.options.map((option, idx) => {
+              {(Array.isArray(q.options) ? q.options : []).map((option, idx) => {
                 const isCorrect = idx === q.correct_answer;
                 const isSelected = idx === selectedAnswer;
                 let className = 'border-slate-200 dark:border-slate-700 hover:border-primary-400 hover:scale-[1.01]';
@@ -255,7 +359,12 @@ export default function Quiz() {
   );
 }
 
-function CategorySelect({ categories, onSelect, loading }: { categories: string[]; onSelect: (c: string) => void; loading: boolean }) {
+function CategorySelect({ categories, onSelect, loading, error }: { 
+  categories: string[]; 
+  onSelect: (c: string) => void; 
+  loading: boolean;
+  error?: string | null;
+}) {
   const icons: Record<string, typeof BrainCircuit> = {
     Bible: BookOpen,
     'General Knowledge': Globe,
@@ -284,6 +393,14 @@ function CategorySelect({ categories, onSelect, loading }: { categories: string[
         <div className="max-w-4xl mx-auto">
           <h2 className="text-2xl font-bold text-center mb-2">Choose a Category</h2>
           <p className="text-slate-500 dark:text-slate-400 text-center mb-10">Easy = 10pts · Medium = 20pts · Hard = 30pts · Streak bonus!</p>
+          
+          {error && (
+            <div className="glass-card p-4 mb-6 text-center max-w-md mx-auto">
+              <AlertCircle className="h-8 w-8 text-red-500 mx-auto mb-2" />
+              <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+            </div>
+          )}
+          
           {loading ? (
             <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
               {Array.from({ length: 5 }).map((_, i) => <SkeletonCard key={i} />)}
@@ -318,8 +435,14 @@ function CategorySelect({ categories, onSelect, loading }: { categories: string[
 }
 
 function ResultsScreen({ score, total, maxStreak, category, results, user, onRetry, onChangeCategory }: {
-  score: number; total: number; maxStreak: number; category: string; results: QuizResult[];
-  user: { id: string } | null; onRetry: () => void; onChangeCategory: () => void;
+  score: number; 
+  total: number; 
+  maxStreak: number; 
+  category: string; 
+  results: QuizResult[];
+  user: { id: string } | null; 
+  onRetry: () => void; 
+  onChangeCategory: () => void;
 }) {
   const { showToast } = useToast();
   const accuracy = total > 0 ? Math.round((score / (total * 30)) * 100) : 0;
@@ -337,7 +460,6 @@ function ResultsScreen({ score, total, maxStreak, category, results, user, onRet
 
   return (
     <div className="min-h-screen pt-8 pb-20">
-      {/* Confetti */}
       {isGoodScore && <Confetti />}
 
       <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -410,17 +532,25 @@ function ResultsScreen({ score, total, maxStreak, category, results, user, onRet
                 <div
                   key={i}
                   className={`flex items-center gap-3 p-3 rounded-xl ${
-                    i === 0 ? 'bg-gold-50 dark:bg-gold-900/20 border border-gold-300 dark:border-gold-700' : 'bg-slate-50 dark:bg-slate-800/50'
+                    i === 0 
+                      ? 'bg-gold-50 dark:bg-gold-900/20 border border-gold-300 dark:border-gold-700' 
+                      : 'bg-slate-50 dark:bg-slate-800/50'
                   }`}
                 >
                   <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-sm ${
-                    i === 0 ? 'bg-gold-500 text-white' : i === 1 ? 'bg-slate-400 text-white' : i === 2 ? 'bg-orange-600 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
+                    i === 0 
+                      ? 'bg-gold-500 text-white' 
+                      : i === 1 
+                      ? 'bg-slate-400 text-white' 
+                      : i === 2 
+                      ? 'bg-orange-600 text-white' 
+                      : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
                   }`}>
                     {i + 1}
                   </div>
                   <div className="flex-1">
                     <p className="font-semibold text-sm">
-                      {r.user_id === user?.id ? 'You' : `Player ${r.user_id.slice(0, 8)}`}
+                      {r.user_id === user?.id ? 'You' : `Player ${r.user_id?.slice(0, 8) || 'Unknown'}`}
                     </p>
                     <p className="text-xs text-slate-500">{r.category} · {r.total_questions} questions</p>
                   </div>
@@ -458,4 +588,3 @@ function Confetti() {
     </div>
   );
 }
-
