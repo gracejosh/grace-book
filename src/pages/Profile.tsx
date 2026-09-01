@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase, uploadToCloudinary } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { useToast } from '@/context/ToastContext';
 import type { QuizResult, BookDownload, CourseProgress } from '@/types';
-import { User, Mail, Lock, Eye, EyeOff, Camera, Edit2, Save, X, Award, BookOpen, Download, GraduationCap, BrainCircuit, LogOut, KeyRound, Star } from 'lucide-react';
+import { User, Mail, Lock, Eye, EyeOff, Camera, Edit2, Save, X, Award, BookOpen, Download, GraduationCap, BrainCircuit, LogOut, KeyRound, Star, MessageCircle } from 'lucide-react';
 
 export default function Profile() {
   const { user, profile, loading, signUp, signIn, signOut, refreshProfile } = useAuth();
@@ -268,6 +269,7 @@ function ProfileDashboard({ user, profile, showToast, signOut, refreshProfile }:
                   <p className="text-xs text-slate-400">Member since {new Date(profile?.created_at ?? Date.now()).toLocaleDateString()}</p>
                   <div className="flex gap-2 mt-4 justify-center sm:justify-start">
                     <button onClick={() => setEditing(true)} className="btn-ghost py-2"><Edit2 className="h-4 w-4" /> Edit Profile</button>
+                    <Link to="/chat" className="btn-ghost py-2 inline-flex items-center gap-2"><MessageCircle className="h-4 w-4" /> Messages</Link>
                     <button onClick={() => setShowPasswordChange(!showPasswordChange)} className="btn-ghost py-2"><KeyRound className="h-4 w-4" /> Password</button>
                     <button onClick={signOut} className="btn-ghost py-2 text-red-600 dark:text-red-400"><LogOut className="h-4 w-4" /> Logout</button>
                   </div>
